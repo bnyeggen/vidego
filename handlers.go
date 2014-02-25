@@ -25,7 +25,8 @@ func jsonDumpHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(movies)
 }
 
-// Receives updates to movies via PUT, or returns JSON version via GET
+// Receives updates to movies via PUT
+// TODO: Return individual movies via GET
 func movieUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	id := r.Form.Get("id")
@@ -48,6 +49,7 @@ func movieUpdateHandler(w http.ResponseWriter, r *http.Request) {
 
 // Renders movies as a pretty web page
 func displayAllHandler(w http.ResponseWriter, r *http.Request) {
+	//Currently this doesn't actually require any templating
 	t, _ := template.ParseFiles("resources/index.html")
 	mvs, e := DumpDB()
 	if e != nil {
@@ -59,7 +61,7 @@ func displayAllHandler(w http.ResponseWriter, r *http.Request) {
 func scanAllPaths() {
 	for _, path := range scannerPaths {
 		for _, mv := range ScanForMovies(path) {
-			//These could be goroutines, but this should be IO bound on 16mb
+			//These could be goroutines, but this should be IO bound
 			//segments with little advantage to concurrency
 			CheckAndStore(&mv)
 		}
