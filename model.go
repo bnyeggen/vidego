@@ -1,0 +1,175 @@
+package main
+
+import (
+	"database/sql"
+	"errors"
+	_ "github.com/mattn/go-sqlite3"
+)
+
+//Gloabl state holding the open DB
+var mainDB *sql.DB
+
+// Initialize database if it hasn't been already, returning a pointer to it
+func migrate(loc string) *sql.DB {
+	myDB, err := sql.Open("sqlite3", loc)
+	if err != nil {
+		panic(err)
+	}
+	sql := `
+	create table if not exists
+	movies(id integer primary key,
+	       path text not null unique,
+	       byte_length integer not null,
+	       title text not null, 
+	       director text,
+	       imdb_id integer,
+	       added_date text not null,
+	       watched integer not null,
+	       hash text);
+	create index if not exists movies_hash on movies(hash);
+	`
+	_, err = myDB.Exec(sql)
+	if err != nil {
+		panic(err)
+	}
+	return myDB
+}
+
+//Store without check
+func Store(m *Movie) error {
+	dateAsTxt, _ := m.Added_date.MarshalText()
+	res, err := mainDB.Exec("insert into movies(path, byte_length, title, director, added_date, watched, hash) values(?,?,?,?,?,?,?)", m.Path, m.Byte_length, m.Title, m.Director, dateAsTxt, m.Watched, m.Hash)
+	if err != nil {
+		return err
+	}
+	m.Id, err = res.LastInsertId()
+	return err
+}
+
+//Constrained to be only Id and one value
+func ModifyWithMap(m map[string]interface{}) error {
+	id, ok := m["id"]
+	if !ok {
+		return errors.New("No ID in ModifyWithMap")
+	}
+	if newTitle, ok := m["title"]; ok {
+		_, err := mainDB.Exec("update movies set title=? where id=?", newTitle, id)
+		return err
+	} else if newDirector, ok := m["director"]; ok {
+		_, err := mainDB.Exec("update movies set director=? where id=?", newDirector, id)
+		return err
+	} else if watched, ok := m["watched"]; ok {
+		_, err := mainDB.Exec("update movies set watched=? where id=?", watched, id)
+		return err
+	}
+	return errors.New("No valid update to map")
+}
+
+// Overwrite the old record with the new data
+func Modify(newM *Movie) error {
+	_, err := mainDB.Exec(`
+	update movies set 
+		title=?,
+		director=?,
+		watched=?
+	where id=?`, newM.Title, newM.Director, newM.Watched, newM.Id)
+	return err
+}
+
+// Remove the movie record with the given path.
+func Remove(path string) error {
+	_, err := mainDB.Exec("delete from movies where path = ?", path)
+	return err
+}
+
+func DumpDB() ([]Movie, error) {
+	out := make([]Movie, 0)
+	r, e := mainDB.Query("select id, path, byte_length, title, director, added_date, watched, hash from movies")
+	if e != nil {
+		return out, e
+	}
+	for r.Next() {
+		var m Movie
+		var added_date_txt string
+		e = r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &added_date_txt, &m.Watched, &m.Hash)
+		m.Added_date.UnmarshalText([]byte(added_date_txt))
+		if e != nil {
+			return out, e
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+func DumpAllPaths() ([]string, error) {
+	out := make([]string, 0)
+	r, e := mainDB.Query("select path from movies")
+	if e != nil {
+		return out, e
+	}
+	for r.Next() {
+		var s string
+		e = r.Scan(&s)
+		if e != nil {
+			return out, e
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+func GetMovieByPath(path string) *Movie {
+	r := mainDB.QueryRow("select id, path, byte_length, title, director, added_date, watched, hash from movies where path=?", path)
+	var m Movie
+	e := r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &m.Added_date, &m.Watched, &m.Hash)
+	if e == sql.ErrNoRows {
+		return nil
+	}
+	return &m
+}
+
+func GetMovieByHashAndSize(hash string, byte_length int64) *Movie {
+	r := mainDB.QueryRow("select id, path, byte_length, title, director, added_date, watched, hash from movies where hash=? and byte_length=?", hash, byte_length)
+	var m Movie
+	e := r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &m.Added_date, &m.Watched, &m.Hash)
+	if e == sql.ErrNoRows {
+		return nil
+	}
+	return &m
+}
+
+//Specialized version of the general Modify fn
+func UpdatePath(oldPath string, newPath string) error {
+	_, err := mainDB.Exec("update movies set path=? where path=?", newPath, oldPath)
+	return err
+}
+
+//Stores as a new record, or detects moves and updates if necessary
+func CheckAndStore(m *Movie) {
+	//Find by path
+	oldM := GetMovieByPath(m.Path)
+	if oldM == nil {
+		//No existing movie at that path, so either this movie was moved here, or it's new
+		//Hash the file if it's empty
+		if m.Hash == "" {
+			m.populateHash()
+		}
+		//Check based on hash and length for movement
+		oldM = GetMovieByHashAndSize(m.Hash, m.Byte_length)
+		if oldM == nil {
+			Store(m)
+		} else {
+			UpdatePath(oldM.Path, m.Path)
+		}
+	} else {
+		//Movie exists at that path already - verify it's the same one
+		if m.Byte_length == oldM.Byte_length {
+			return
+		} else {
+			//Old one needs to be deleted, this one to be inserted
+			Remove(oldM.Path)
+			//This will now succeed
+			Store(m)
+		}
+	}
+}

@@ -1,0 +1,4 @@
+/*We are not pretty.*/
+body { font-family:'lucida grande', 'tahoma', 'verdana', 'arial', 'sans-serif'; font-size:16px; }
+h1 { font-size: 24px; }
+.colheader:hover { text-decoration:underline; }

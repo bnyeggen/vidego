@@ -1,0 +1,1 @@
+Simple program to index movie files and maintain persistent metadata about them.  Really, it's about writing a first CRUD app in Go / Javascript.
