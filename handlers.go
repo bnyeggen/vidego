@@ -63,6 +63,7 @@ func scanAllPaths() {
 		for _, mv := range ScanForMovies(path) {
 			//These could be goroutines, but this should be IO bound
 			//segments with little advantage to concurrency
+			log.Println(mv.Path)
 			CheckAndStore(&mv)
 		}
 	}
