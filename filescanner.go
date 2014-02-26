@@ -57,6 +57,7 @@ type Movie struct {
 	Byte_length int64
 	Title       string
 	Director    string
+	Year        string    //Technically a date, but for flexibility (eg ranges)...
 	Added_date  time.Time //jsonizes as "0001-01-01T00:00:00Z"
 	Watched     bool
 	Hash        string //Not calculated by default. Stored as base64
@@ -71,6 +72,7 @@ func NewMovie(path string) *Movie {
 		Byte_length: info.Size(),
 		Title:       GetFilenameNoExt(path), //Treat filename excluding extension as title
 		Director:    "",
+		Year:        "",
 		Added_date:  time.Now(),
 		Watched:     false,
 		Hash:        ""}

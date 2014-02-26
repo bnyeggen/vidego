@@ -8,7 +8,7 @@ function rowIdToMovieId(s){
 }
 
 //Important to sync up this, movieToTableRow, and tableRowToMovie
-var fields = ["title", "director", "watched", "added_date"]
+var fields = ["title", "director", "year", "watched", "added_date"]
 
 function movieToTableRow(movie){
 	var row = document.createElement("tr");
@@ -22,6 +22,10 @@ function movieToTableRow(movie){
 	directorCol.setAttribute("contentEditable", true);
 	directorCol.innerHTML = movie.Director;
 	
+	var yearCol = document.createElement("td");
+	yearCol.setAttribute("contenteditable", true);
+	yearCol.innerHTML = movie.Year;
+	
 	var watchedCol = document.createElement("td");
 	var watchedCheck = document.createElement("input");
 	watchedCheck.type="checkbox";
@@ -33,6 +37,7 @@ function movieToTableRow(movie){
 	
 	row.appendChild(titleCol);
 	row.appendChild(directorCol);
+	row.appendChild(yearCol);
 	row.appendChild(watchedCol);
 	row.appendChild(addedCol);
 
@@ -43,8 +48,9 @@ function movieToTableRow(movie){
 function tableRowToMovie(tr){
 	return {"title": tr.cells[0].innerHTML,
 			"director": tr.cells[1].innerHTML,
-			"watched": tr.cells[2].checked,
-			"added_date": tr.cells[3].innerHTML,
+			"year": tr.cells[2].innerHTML,
+			"watched": tr.cells[3].checked,
+			"added_date": tr.cells[4].innerHTML,
 			"id": rowIdToMovieId(tr.id)}
 }
 
@@ -56,7 +62,7 @@ function renderTable(sorter) {
 		while (tableBodyEl.hasChildNodes()) {
 			tableBodyEl.removeChild(tableBodyEl.lastChild);
 		}
-		var jsondata = JSON.parse(this.responseText);
+		jsondata = JSON.parse(this.responseText);
 		if(sorter != null) {
 			sorter(jsondata);
 		}
@@ -76,8 +82,8 @@ var sorterStates = {}
 function makeSorter(col){
 	sorterStates[col] = true
 	return function(ar){
-		ar.sort(function(e){
-			return e[col];
+		ar.sort(function(i1,i2){
+			return i1[col].toString().localeCompare(i2[col].toString());
 		});
 		if (!sorterStates[col]){
 			ar.reverse();
@@ -89,10 +95,12 @@ function makeSorter(col){
 directorSorter = makeSorter("Director");
 titleSorter = makeSorter("Title");
 watchedSorter = makeSorter("Watched");
+yearSorter = makeSorter("Year");
 addedSorter = makeSorter("Added_date");
 
 document.getElementById("title_col").addEventListener("click",function(e){renderTable(titleSorter)});
 document.getElementById("director_col").addEventListener("click",function(e){renderTable(directorSorter)});
+document.getElementById("year_col").addEventListener("click",function(e){renderTable(yearSorter)});
 document.getElementById("watched_col").addEventListener("click",function(e){renderTable(watchedSorter)});
 document.getElementById("added_col").addEventListener("click",function(e){renderTable(addedSorter)});
 
@@ -161,7 +169,8 @@ function handleFilterTable(e){
 			var thisRow = tableBodyEl.rows[j];
 			var thisMovie = tableRowToMovie(thisRow);
 			if(thisMovie["title"].toLowerCase().indexOf(term)!==-1 
-			|| thisMovie["director"].toLowerCase().indexOf(term)!==-1){
+			|| thisMovie["director"].toLowerCase().indexOf(term)!==-1
+			|| thisMovie["year"].toLowerCase().indexOf(term)!==-1){
 				thisRow.style.display = "";
 			} else {
 				thisRow.style.display = "none";

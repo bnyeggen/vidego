@@ -22,7 +22,7 @@ func migrate(loc string) *sql.DB {
 	       byte_length integer not null,
 	       title text not null, 
 	       director text,
-	       imdb_id integer,
+	       year integer,
 	       added_date text not null,
 	       watched integer not null,
 	       hash text);
@@ -38,7 +38,7 @@ func migrate(loc string) *sql.DB {
 //Store without check
 func Store(m *Movie) error {
 	dateAsTxt, _ := m.Added_date.MarshalText()
-	res, err := mainDB.Exec("insert into movies(path, byte_length, title, director, added_date, watched, hash) values(?,?,?,?,?,?,?)", m.Path, m.Byte_length, m.Title, m.Director, dateAsTxt, m.Watched, m.Hash)
+	res, err := mainDB.Exec("insert into movies(path, byte_length, title, director, year, added_date, watched, hash) values(?,?,?,?,?,?,?,?)", m.Path, m.Byte_length, m.Title, m.Director, m.Year, dateAsTxt, m.Watched, m.Hash)
 	if err != nil {
 		return err
 	}
@@ -61,19 +61,11 @@ func ModifyWithMap(m map[string]interface{}) error {
 	} else if watched, ok := m["watched"]; ok {
 		_, err := mainDB.Exec("update movies set watched=? where id=?", watched, id)
 		return err
+	} else if year, ok := m["year"]; ok {
+		_, err := mainDB.Exec("update movies set year=? where id=?", year, id)
+		return err
 	}
 	return errors.New("No valid update to map")
-}
-
-// Overwrite the old record with the new data
-func Modify(newM *Movie) error {
-	_, err := mainDB.Exec(`
-	update movies set 
-		title=?,
-		director=?,
-		watched=?
-	where id=?`, newM.Title, newM.Director, newM.Watched, newM.Id)
-	return err
 }
 
 // Remove the movie record with the given path.
@@ -84,14 +76,14 @@ func Remove(path string) error {
 
 func DumpDB() ([]Movie, error) {
 	out := make([]Movie, 0)
-	r, e := mainDB.Query("select id, path, byte_length, title, director, added_date, watched, hash from movies")
+	r, e := mainDB.Query("select id, path, byte_length, title, director, year, added_date, watched, hash from movies")
 	if e != nil {
 		return out, e
 	}
 	for r.Next() {
 		var m Movie
 		var added_date_txt string
-		e = r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &added_date_txt, &m.Watched, &m.Hash)
+		e = r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &m.Year, &added_date_txt, &m.Watched, &m.Hash)
 		m.Added_date.UnmarshalText([]byte(added_date_txt))
 		if e != nil {
 			return out, e
@@ -118,24 +110,25 @@ func DumpAllPaths() ([]string, error) {
 	return out, nil
 }
 
-func GetMovieByPath(path string) *Movie {
-	r := mainDB.QueryRow("select id, path, byte_length, title, director, added_date, watched, hash from movies where path=?", path)
+//This just ensures we have the same fields & order when we query
+//Obviously, don't SQL inject yourself in the clause w/ user input
+func getMovieByWhereClause(clause string, args ...interface{}) *Movie {
 	var m Movie
-	e := r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &m.Added_date, &m.Watched, &m.Hash)
+	q := "select id, path, byte_length, title, director, year, added_date, watched, hash from movies " + clause
+	r := mainDB.QueryRow(q, args...)
+	e := r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &m.Year, &m.Added_date, &m.Watched, &m.Hash)
 	if e == sql.ErrNoRows {
 		return nil
 	}
 	return &m
 }
 
+func GetMovieByPath(path string) *Movie {
+	return getMovieByWhereClause("where path=?", path)
+}
+
 func GetMovieByHashAndSize(hash string, byte_length int64) *Movie {
-	r := mainDB.QueryRow("select id, path, byte_length, title, director, added_date, watched, hash from movies where hash=? and byte_length=?", hash, byte_length)
-	var m Movie
-	e := r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &m.Added_date, &m.Watched, &m.Hash)
-	if e == sql.ErrNoRows {
-		return nil
-	}
-	return &m
+	return getMovieByWhereClause("where hash=? and byte_length=?", hash, byte_length)
 }
 
 //Specialized version of the general Modify fn
