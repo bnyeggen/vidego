@@ -64,7 +64,10 @@ func scanAllPaths() {
 			//These could be goroutines, but this should be IO bound
 			//segments with little advantage to concurrency
 			log.Println(mv.Path)
-			CheckAndStore(&mv)
+			e := CheckAndStore(&mv)
+			if e != nil {
+				log.Println(e)
+			}
 		}
 	}
 	//Then needs to purge all nonexistent movies

@@ -75,6 +75,7 @@ func Remove(path string) error {
 }
 
 func DumpDB() ([]Movie, error) {
+	//TODO: Reuse the getMovieByWhereClause machinery as much as possible
 	out := make([]Movie, 0)
 	r, e := mainDB.Query("select id, path, byte_length, title, director, year, added_date, watched, hash from movies")
 	if e != nil {
@@ -137,8 +138,9 @@ func UpdatePath(oldPath string, newPath string) error {
 	return err
 }
 
-//Stores as a new record, or detects moves and updates if necessary
-func CheckAndStore(m *Movie) {
+// Stores as a new record, or detects moves and updates if necessary
+// Returns any errors
+func CheckAndStore(m *Movie) error {
 	//Find by path
 	oldM := GetMovieByPath(m.Path)
 	if oldM == nil {
@@ -150,19 +152,22 @@ func CheckAndStore(m *Movie) {
 		//Check based on hash and length for movement
 		oldM = GetMovieByHashAndSize(m.Hash, m.Byte_length)
 		if oldM == nil {
-			Store(m)
+			return Store(m)
 		} else {
-			UpdatePath(oldM.Path, m.Path)
+			return UpdatePath(oldM.Path, m.Path)
 		}
 	} else {
 		//Movie exists at that path already - verify it's the same one
 		if m.Byte_length == oldM.Byte_length {
-			return
+			return nil
 		} else {
 			//Old one needs to be deleted, this one to be inserted
-			Remove(oldM.Path)
+			e := Remove(oldM.Path)
+			if e != nil {
+				return e
+			}
 			//This will now succeed
-			Store(m)
+			return Store(m)
 		}
 	}
 }
