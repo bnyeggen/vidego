@@ -12,6 +12,7 @@ import (
 )
 
 // Utilities for scanning the filesystem and turning movie files into Movie objects
+// TODO: Consider https://github.com/howeyc/fsnotify
 
 // Discriminates video files from eg subtitles, notes, thumbnails...
 var AcceptedFiletypes = map[string]bool{
