@@ -105,11 +105,19 @@ document.getElementById("watched_col").addEventListener("click",function(e){rend
 document.getElementById("added_col").addEventListener("click",function(e){renderTable(addedSorter)});
 
 //If we had more than 1 input field, this would need to discriminate between them
-function handleCheckbox(e){
+function handleInput(e){
 	var el = e.target;
+	if (el.nodeName !== "INPUT"){
+		return;
+	}
+
+	var colN = el.parentNode.cellIndex;
+	var field = fields[colN];
+	var val = (field==="watched") ? el.checked : el.value;
 	var row = el.parentNode.parentNode
 	var id = rowIdToMovieId(row.id)
-	var uri = "/update?id=" + id + "&field=watched&val=" + el.checked;
+	
+	var uri = "/update?id=" + id + "&field=" + field + "&val=" + encodeURIComponent(val);
 	var req = new XMLHttpRequest();
 	req.overrideMimeType("application/json");
 	req.open("PUT", uri, true);
@@ -121,7 +129,7 @@ function nukeBreaks(s){
 	return s.replace(re, "")
 }
 
-function handleTableUpdate(e){
+function handleContentEditable(e){
 	//Only fire on td level; this also prevents embedded inputs from firing
 	var el = e.target;
 	if (el.nodeName !== "TD"){
@@ -183,9 +191,9 @@ function handleFilterTable(e){
 filter.addEventListener("keyup", handleFilterTable);
 
 //Handles changes to actual input elements
-tableBodyEl.addEventListener("change",handleCheckbox);
+tableBodyEl.addEventListener("change", handleInput);
 //And loss-of-focus for raw (presumably contenteditable) td elements
-tableBodyEl.addEventListener("blur", handleTableUpdate, true);
+tableBodyEl.addEventListener("blur", handleContentEditable, true);
 
 //Prevent "enter" from embedding newlines
 tableBodyEl.addEventListener("keydown", handleTableEnterKey);
