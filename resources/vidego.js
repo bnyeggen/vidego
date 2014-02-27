@@ -84,7 +84,8 @@ function renderTable(sorter) {
 		while (tableBodyEl.hasChildNodes()) {
 			tableBodyEl.removeChild(tableBodyEl.lastChild);
 		}
-		jsondata = JSON.parse(this.responseText);
+		//Un-var this to make a global for debugging
+		var jsondata = JSON.parse(this.responseText);
 		if(sorter != null) {
 			sorter(jsondata);
 		}
