@@ -117,7 +117,9 @@ func getMovieByWhereClause(clause string, args ...interface{}) *Movie {
 	var m Movie
 	q := "select id, path, byte_length, title, director, year, added_date, watched, hash from movies " + clause
 	r := mainDB.QueryRow(q, args...)
-	e := r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &m.Year, &m.Added_date, &m.Watched, &m.Hash)
+	var added_date_txt string
+	e := r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &m.Year, &added_date_txt, &m.Watched, &m.Hash)
+	m.Added_date.UnmarshalText([]byte(added_date_txt))
 	if e == sql.ErrNoRows {
 		return nil
 	}
