@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -26,15 +27,14 @@ func jsonDumpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Receives updates to movies via PUT
-// TODO: Return individual movies via GET
 func movieUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	id := r.Form.Get("id")
-	field := strings.ToLower(r.Form.Get("field"))
-	val := r.Form.Get("val")
 
 	switch r.Method {
 	case "PUT":
+		field := strings.ToLower(r.Form.Get("field"))
+		val := r.Form.Get("val")
 		update := map[string]interface{}{
 			"id":  id,
 			field: val,
@@ -44,6 +44,20 @@ func movieUpdateHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println(e)
 		}
 		w.WriteHeader(http.StatusNoContent)
+	case "GET":
+		idAsInt, e := strconv.ParseInt(id, 10, 64)
+		if e != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		mv := GetMovieByID(idAsInt)
+		if mv == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		mvAsJSON, _ := json.Marshal(mv)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(mvAsJSON)
 	}
 }
 

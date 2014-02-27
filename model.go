@@ -132,6 +132,10 @@ func GetMovieByHashAndSize(hash string, byte_length int64) *Movie {
 	return getMovieByWhereClause("where hash=? and byte_length=?", hash, byte_length)
 }
 
+func GetMovieByID(id int64) *Movie {
+	return getMovieByWhereClause("where id=?", id)
+}
+
 //Specialized version of the general Modify fn
 func UpdatePath(oldPath string, newPath string) error {
 	_, err := mainDB.Exec("update movies set path=? where path=?", newPath, oldPath)
