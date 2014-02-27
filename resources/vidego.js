@@ -10,6 +10,28 @@ function rowIdToMovieId(s){
 //Important to sync up this, movieToTableRow, and tableRowToMovie
 var fields = ["title", "director", "year", "watched", "added_date"]
 
+function makeYearPicker(yearSelected){
+	var sel = document.createElement("select");
+	
+	var option = document.createElement("option");
+	option.value="0";
+	if(yearSelected==0){
+		option.selected = true;
+	}
+	sel.add(option);
+	
+	for(var i=1920; i<=new Date().getFullYear(); i++){
+		var option = document.createElement("option");
+		option.value = i.toString();
+		option.innerHTML = i.toString();
+		if(yearSelected == i){
+			option.selected = true;
+		}
+		sel.add(option);
+	}
+	return sel;
+}
+
 function movieToTableRow(movie){
 	var row = document.createElement("tr");
 	row.setAttribute("id", "movie_" + movie.Id);
@@ -23,8 +45,7 @@ function movieToTableRow(movie){
 	directorCol.innerHTML = movie.Director;
 	
 	var yearCol = document.createElement("td");
-	yearCol.setAttribute("contenteditable", true);
-	yearCol.innerHTML = movie.Year;
+	yearCol.appendChild(makeYearPicker(movie.Year));
 	
 	var watchedCol = document.createElement("td");
 	var watchedCheck = document.createElement("input");
@@ -46,9 +67,10 @@ function movieToTableRow(movie){
 
 //Approximate mapping based on displayed/embedded info
 function tableRowToMovie(tr){
+	var yearIdx = tr.cells[2].children[0].selectedIndex;
 	return {"title": tr.cells[0].innerHTML,
 			"director": tr.cells[1].innerHTML,
-			"year": tr.cells[2].innerHTML,
+			"year": tr.cells[2].children[0].options[yearIdx].value,
 			"watched": tr.cells[3].checked,
 			"added_date": tr.cells[4].innerHTML,
 			"id": rowIdToMovieId(tr.id)}
@@ -104,7 +126,27 @@ document.getElementById("year_col").addEventListener("click",function(e){renderT
 document.getElementById("watched_col").addEventListener("click",function(e){renderTable(watchedSorter)});
 document.getElementById("added_col").addEventListener("click",function(e){renderTable(addedSorter)});
 
-//If we had more than 1 input field, this would need to discriminate between them
+function fireUpdateRequest(id, field, val){
+	var uri = "/update?id=" + id + "&field=" + field + "&val=" + encodeURIComponent(val);
+	var req = new XMLHttpRequest();
+	req.open("PUT", uri, true);
+	req.send()
+}
+
+function handleSelect(e){
+	var el = e.target;
+	if (el.nodeName !== "SELECT"){
+		return;
+	}
+	var colN = el.parentNode.cellIndex;
+	var field = fields[colN];
+	var val = el.options[el.selectedIndex].value;
+	var row = el.parentNode.parentNode
+	var id = rowIdToMovieId(row.id)
+	
+	fireUpdateRequest(id, field, val);
+}
+
 function handleInput(e){
 	var el = e.target;
 	if (el.nodeName !== "INPUT"){
@@ -117,11 +159,8 @@ function handleInput(e){
 	var row = el.parentNode.parentNode
 	var id = rowIdToMovieId(row.id)
 	
-	var uri = "/update?id=" + id + "&field=" + field + "&val=" + encodeURIComponent(val);
-	var req = new XMLHttpRequest();
-	req.overrideMimeType("application/json");
-	req.open("PUT", uri, true);
-	req.send()
+	fireUpdateRequest(id, field, val);
+
 }
 
 function nukeBreaks(s){
@@ -140,13 +179,10 @@ function handleContentEditable(e){
 	var field = fields[colN]
 	var row = el.parentNode
 	var id = rowIdToMovieId(row.id)
-	el.innerHTML = nukeBreaks(el.innerHTML)
+	el.innerHTML = nukeBreaks(el.textContent)
 	var val = el.innerHTML
-	var uri = "/update?id=" + id + "&field=" + field + "&val=" + encodeURIComponent(val)
-	var req = new XMLHttpRequest();
-	req.overrideMimeType("application/json");
-	req.open("PUT", uri, true);
-	req.send()
+	
+	fireUpdateRequest(id, field, val);
 }
 
 function handleTableEnterKey(e){
@@ -178,7 +214,7 @@ function handleFilterTable(e){
 			var thisMovie = tableRowToMovie(thisRow);
 			if(thisMovie["title"].toLowerCase().indexOf(term)!==-1 
 			|| thisMovie["director"].toLowerCase().indexOf(term)!==-1
-			|| thisMovie["year"].toLowerCase().indexOf(term)!==-1){
+			|| thisMovie["year"].toString().toLowerCase().indexOf(term)!==-1){
 				thisRow.style.display = "";
 			} else {
 				thisRow.style.display = "none";
@@ -188,12 +224,14 @@ function handleFilterTable(e){
 }
 
 //Filters table
-filter.addEventListener("keyup", handleFilterTable);
+filterEl.addEventListener("keyup", handleFilterTable);
 
 //Handles changes to actual input elements
 tableBodyEl.addEventListener("change", handleInput);
 //And loss-of-focus for raw (presumably contenteditable) td elements
 tableBodyEl.addEventListener("blur", handleContentEditable, true);
+//And selects
+tableBodyEl.addEventListener("change", handleSelect);
 
 //Prevent "enter" from embedding newlines
 tableBodyEl.addEventListener("keydown", handleTableEnterKey);
