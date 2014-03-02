@@ -71,29 +71,3 @@ func displayAllHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	t.Execute(w, mvs)
 }
-
-func scanAllPaths() {
-	for _, path := range scannerPaths {
-		for _, mv := range ScanForMovies(path) {
-			//These could be goroutines, but this should be IO bound
-			//segments with little advantage to concurrency
-			log.Println(mv.Path)
-			e := CheckAndStore(&mv)
-			if e != nil {
-				log.Println(e)
-			}
-		}
-	}
-	//Then needs to purge all nonexistent movies
-	paths, _ := DumpAllPaths()
-	for _, path := range paths {
-		if !PathExists(path) {
-			Remove(path)
-		}
-	}
-}
-
-// Initiates a scan of the paths supplied on startup
-func scanHandler(w http.ResponseWriter, r *http.Request) {
-	scanAllPaths()
-}
