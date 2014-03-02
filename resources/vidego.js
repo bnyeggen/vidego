@@ -57,7 +57,10 @@ function movieToTableRow(movie){
 	addedCol.innerHTML = movie.Added_date.substring(0,10);
 	
 	var pathCol = document.createElement("td");
-	pathCol.innerHTML = movie.Path
+	var asLink = document.createElement("a");
+	asLink.href = "/movies" + movie.Path
+	asLink.text = movie.Path
+	pathCol.appendChild(asLink)
 	
 	row.appendChild(titleCol);
 	row.appendChild(directorCol);
