@@ -5,10 +5,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // Utilities for scanning the filesystem and turning movie files into Movie objects
@@ -49,39 +49,6 @@ func GetFileType(path string) string {
 func GetFilenameNoExt(path string) string {
 	split := strings.Split(filepath.Base(path), ".")
 	return strings.Join(split[0:len(split)-1], ".")
-}
-
-// Base Movie type, with associated metadata
-type Movie struct {
-	Id          int64
-	Path        string
-	Byte_length int64
-	Title       string
-	Director    string
-	Year        uint16
-	Added_date  time.Time //jsonizes as "0001-01-01T00:00:00Z"
-	Watched     bool
-	Hash        string //Not calculated by default. Stored as base64
-}
-
-// Creates a movie from the path with "blank" metadata
-func NewMovie(path string) *Movie {
-	info, _ := os.Lstat(path)
-	return &Movie{
-		Id:          -1,
-		Path:        path, //Assumes path is already absolute
-		Byte_length: info.Size(),
-		Title:       GetFilenameNoExt(path), //Treat filename excluding extension as title
-		Director:    "",
-		Year:        0,
-		Added_date:  time.Now(),
-		Watched:     false,
-		Hash:        ""}
-}
-
-// Mutatively populate the hash of the given movie
-func (m *Movie) populateHash() {
-	m.Hash = HashFile(m.Path)
 }
 
 // Returns a list of all absolute paths found under the base path that correspond to movies
@@ -125,4 +92,63 @@ func ScanForMovies(basepath string) []Movie {
 func PathExists(p string) bool {
 	_, err := os.Stat(p)
 	return !os.IsNotExist(err)
+}
+
+func scanAllPaths() {
+	for _, path := range scannerPaths {
+		for _, m := range ScanForMovies(path) {
+			mByPath := GetMovieByPath(m.Path)
+			if mByPath != nil && m.Byte_length == mByPath.Byte_length {
+				//Existing name & same size - match
+				log.Println("Skipping: " + m.Path)
+				continue
+			} else {
+				//With a "real" db, this could be all goroutines w/ a waitgroup
+				//But we're IO bound w/ our disk setup, and finding optimal IO
+				//parallelism is a bit painful
+				log.Println("Hashing & Storing: " + m.Path)
+				m.populateHash()
+
+				mByHash := GetMovieByHashAndSize(m.Hash, m.Byte_length)
+
+				if mByHash == nil && mByPath == nil {
+					//New file, with no pre-existing file to deal with
+					e := StoreNew(&m)
+					if e != nil {
+						log.Println(e)
+					}
+				} else if mByHash == nil && mByPath != nil {
+					//Conceptually a new file - the previous occupant can be blanked and collected below
+					ClearPathByID(mByPath.Id)
+					e := StoreNew(&m)
+					if e != nil {
+						log.Println(e)
+					}
+				} else if mByHash != nil && mByPath == nil {
+					//Copied or moved from somewhere else to a new location - ignore the "somewhere else"
+					e := StoreCopy(mByHash, m.Path)
+					if e != nil {
+						log.Println(e)
+					}
+
+				} else if mByHash != nil && mByPath != nil {
+					//Copied or moved from somewhere else, overwriting existing location
+					ClearPathByID(mByPath.Id)
+					e := StoreCopy(mByHash, m.Path)
+					if e != nil {
+						log.Println(e)
+					}
+				}
+			}
+		}
+	}
+
+	//Finally, remove any records of files that no longer exist
+	paths, _ := DumpAllPaths()
+	for _, path := range paths {
+		if !PathExists(path) {
+			Remove(path)
+		}
+	}
+	DeleteNullPaths()
 }

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	_ "github.com/mattn/go-sqlite3"
+	"os"
+	"time"
 )
 
 //Gloabl state holding the open DB
@@ -15,10 +17,11 @@ func migrate(loc string) *sql.DB {
 	if err != nil {
 		panic(err)
 	}
+	//Path is nullable so we can retain metadata by hash while we're handling moves
 	sql := `
 	create table if not exists
 	movies(id integer primary key,
-	       path text not null unique,
+	       path text,
 	       byte_length integer not null,
 	       title text not null, 
 	       director text,
@@ -27,6 +30,7 @@ func migrate(loc string) *sql.DB {
 	       watched integer not null,
 	       hash text);
 	create index if not exists movies_hash on movies(hash);
+	create index if not exists movies_path on movies(path);
 	`
 	_, err = myDB.Exec(sql)
 	if err != nil {
@@ -35,8 +39,41 @@ func migrate(loc string) *sql.DB {
 	return myDB
 }
 
-//Store without check
-func Store(m *Movie) error {
+// Base Movie type, with associated metadata
+type Movie struct {
+	Id          int64
+	Path        string
+	Byte_length int64
+	Title       string
+	Director    string
+	Year        uint16
+	Added_date  time.Time //jsonizes as "0001-01-01T00:00:00Z"
+	Watched     bool
+	Hash        string //Not calculated by default. Stored as base64
+}
+
+// Creates a movie from the path with "blank" metadata
+func NewMovie(path string) *Movie {
+	info, _ := os.Lstat(path)
+	return &Movie{
+		Id:          -1,
+		Path:        path, //Assumes path is already absolute
+		Byte_length: info.Size(),
+		Title:       GetFilenameNoExt(path), //Treat filename excluding extension as title
+		Director:    "",
+		Year:        0,
+		Added_date:  time.Now(),
+		Watched:     false,
+		Hash:        ""}
+}
+
+// Mutatively populate the hash of the given movie
+func (m *Movie) populateHash() {
+	m.Hash = HashFile(m.Path)
+}
+
+//Store without check, auto-generating ID
+func StoreNew(m *Movie) error {
 	dateAsTxt, _ := m.Added_date.MarshalText()
 	res, err := mainDB.Exec("insert into movies(path, byte_length, title, director, year, added_date, watched, hash) values(?,?,?,?,?,?,?,?)", m.Path, m.Byte_length, m.Title, m.Director, m.Year, dateAsTxt, m.Watched, m.Hash)
 	if err != nil {
@@ -44,6 +81,13 @@ func Store(m *Movie) error {
 	}
 	m.Id, err = res.LastInsertId()
 	return err
+}
+
+//Stores as a "new" movie in the given location, with existing metadata and a new ID
+func StoreCopy(m *Movie, newPath string) error {
+	m.Id = 0
+	m.Path = newPath
+	return StoreNew(m)
 }
 
 //Constrained to be only Id and one value
@@ -96,7 +140,7 @@ func DumpDB() ([]Movie, error) {
 
 func DumpAllPaths() ([]string, error) {
 	out := make([]string, 0)
-	r, e := mainDB.Query("select path from movies")
+	r, e := mainDB.Query("select path from movies where path != null")
 	if e != nil {
 		return out, e
 	}
@@ -109,6 +153,11 @@ func DumpAllPaths() ([]string, error) {
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+func DeleteNullPaths() error {
+	_, e := mainDB.Exec("delete from movies where path = null")
+	return e
 }
 
 //This just ensures we have the same fields & order when we query
@@ -138,42 +187,12 @@ func GetMovieByID(id int64) *Movie {
 	return getMovieByWhereClause("where id=?", id)
 }
 
-//Specialized version of the general Modify fn
 func UpdatePath(oldPath string, newPath string) error {
 	_, err := mainDB.Exec("update movies set path=? where path=?", newPath, oldPath)
 	return err
 }
 
-// Stores as a new record, or detects moves and updates if necessary
-// Returns any errors
-func CheckAndStore(m *Movie) error {
-	//Find by path
-	oldM := GetMovieByPath(m.Path)
-	if oldM == nil {
-		//No existing movie at that path, so either this movie was moved here, or it's new
-		//Hash the file if it's empty
-		if m.Hash == "" {
-			m.populateHash()
-		}
-		//Check based on hash and length for movement
-		oldM = GetMovieByHashAndSize(m.Hash, m.Byte_length)
-		if oldM == nil {
-			return Store(m)
-		} else {
-			return UpdatePath(oldM.Path, m.Path)
-		}
-	} else {
-		//Movie exists at that path already - verify it's the same one
-		if m.Byte_length == oldM.Byte_length {
-			return nil
-		} else {
-			//Old one needs to be deleted, this one to be inserted
-			e := Remove(oldM.Path)
-			if e != nil {
-				return e
-			}
-			//This will now succeed
-			return Store(m)
-		}
-	}
+func ClearPathByID(id int64) error {
+	_, err := mainDB.Exec(`update movies set path="" where id=?`, id)
+	return err
 }
