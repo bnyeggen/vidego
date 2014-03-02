@@ -34,6 +34,10 @@ func main() {
 	http.HandleFunc("/", displayAllHandler)
 	http.HandleFunc("/json", jsonDumpHandler)
 	http.HandleFunc("/update", movieUpdateHandler)
-	http.Handle("/resources/", http.FileServer(http.Dir("resources")))
+	http.Handle("/resources/", http.StripPrefix("/resources/", http.FileServer(http.Dir("resources"))))
+	//This surfaces at, eg, http://localhost:8080/movies/vol1/crapvid/Bernie.m4v
+	for _, path := range scannerPaths {
+		http.Handle("/movies"+path, http.StripPrefix("/movies"+path, http.FileServer(http.Dir(path))))
+	}
 	http.ListenAndServe(":8080", nil)
 }
