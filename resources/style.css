@@ -2,3 +2,4 @@
 body { font-family:'lucida grande', 'tahoma', 'verdana', 'arial', 'sans-serif'; font-size:16px; }
 h1 { font-size: 24px; }
 .colheader:hover { text-decoration:underline; }
+table td { border-left:solid 10px transparent; }
