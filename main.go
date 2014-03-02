@@ -34,6 +34,6 @@ func main() {
 	http.HandleFunc("/", displayAllHandler)
 	http.HandleFunc("/json", jsonDumpHandler)
 	http.HandleFunc("/update", movieUpdateHandler)
-	http.Handle("/resources/", http.StripPrefix("/resources/", http.FileServer(http.Dir("resources"))))
+	http.Handle("/resources/", http.FileServer(http.Dir("resources")))
 	http.ListenAndServe(":8080", nil)
 }
