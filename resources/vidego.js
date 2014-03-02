@@ -56,11 +56,15 @@ function movieToTableRow(movie){
 	var addedCol = document.createElement("td");
 	addedCol.innerHTML = movie.Added_date.substring(0,10);
 	
+	var pathCol = document.createElement("td");
+	pathCol.innerHTML = movie.Path
+	
 	row.appendChild(titleCol);
 	row.appendChild(directorCol);
 	row.appendChild(yearCol);
 	row.appendChild(watchedCol);
 	row.appendChild(addedCol);
+	row.appendChild(pathCol);
 
 	return row
 }
