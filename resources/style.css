@@ -3,3 +3,4 @@ body { font-family:'lucida grande', 'tahoma', 'verdana', 'arial', 'sans-serif'; 
 h1 { font-size: 24px; }
 .colheader:hover { text-decoration:underline; }
 table td { border-left:solid 10px transparent; }
+table { white-space: nowrap;}
