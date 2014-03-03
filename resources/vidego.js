@@ -10,6 +10,23 @@ function rowIdToMovieId(s){
 //Important to sync up this, movieToTableRow, and tableRowToMovie
 var fields = ["title", "director", "year", "watched", "added_date"]
 
+function makeDummyYearPicker(yearSelected){
+	var sel = document.createElement("select");
+	var option = document.createElement("option");
+	option.value = yearSelected.toString();
+	option.innerHTML = (option.value != 0) ? yearSelected.toString() : "";
+	option.selected = true;
+	sel.add(option);
+	//Never gets seen; anything that can open the menu causes the year picker to be replaced.
+	//Purely to ensure homogenous lengths
+	var dummyoption = document.createElement("option");
+	dummyoption.innerHTML = "1988";
+	sel.add(dummyoption);
+	
+	return sel;
+}
+
+//This, or at least the loop, is the bottleneck.
 function makeYearPicker(yearSelected){
 	var sel = document.createElement("select");
 	
@@ -45,7 +62,7 @@ function movieToTableRow(movie){
 	directorCol.innerHTML = movie.Director;
 	
 	var yearCol = document.createElement("td");
-	yearCol.appendChild(makeYearPicker(movie.Year));
+	yearCol.appendChild(makeDummyYearPicker(movie.Year));
 	
 	var watchedCol = document.createElement("td");
 	var watchedCheck = document.createElement("input");
@@ -72,15 +89,10 @@ function movieToTableRow(movie){
 	return row
 }
 
-//Approximate mapping based on displayed/embedded info
-function tableRowToMovie(tr){
+//Approximate mapping based on displayed/embedded info, for filtering
+function tableRowText(tr){
 	var yearIdx = tr.cells[2].children[0].selectedIndex;
-	return {"title": tr.cells[0].innerHTML,
-			"director": tr.cells[1].innerHTML,
-			"year": tr.cells[2].children[0].options[yearIdx].value,
-			"watched": tr.cells[3].checked,
-			"added_date": tr.cells[4].innerHTML,
-			"id": rowIdToMovieId(tr.id)}
+	return tr.cells[0].innerHTML + " " + tr.cells[1].innerHTML + " " + tr.cells[2].children[0].options[yearIdx].value
 }
 
 //Grabs initial data & renders
@@ -96,8 +108,8 @@ function renderTable(sorter) {
 		if(sorter != null) {
 			sorter(jsondata);
 		}
-		for(i=0; i<jsondata.length; i++){
-			row = movieToTableRow(jsondata[i]);
+		for(var i=0; i<jsondata.length; i++){
+			var row = movieToTableRow(jsondata[i]);
 			tableBodyEl.appendChild(row)
 		}
 	};
@@ -139,6 +151,23 @@ function fireUpdateRequest(id, field, val){
 	var req = new XMLHttpRequest();
 	req.open("PUT", uri, true);
 	req.send()
+}
+
+//Map from id -> true, denoting whether that row has had its options fully rendered
+var fullyPopulatedSelectRows = {}
+function handleReplaceYearPicker(e){
+	var el = e.target;
+	if (el.nodeName !== "SELECT"){
+		return;
+	}
+	var row = el.parentNode.parentNode;
+	var id = rowIdToMovieId(row.id)
+	if (fullyPopulatedSelectRows[id]){
+		return;
+	}
+	fullyPopulatedSelectRows[id] = true;
+	var val = el.options[el.selectedIndex].value;
+	el.parentNode.replaceChild(makeYearPicker(val), el);
 }
 
 function handleSelect(e){
@@ -219,10 +248,8 @@ function handleFilterTable(e){
 		}
 		for(var j=0; j<tableBodyEl.rows.length; j++){
 			var thisRow = tableBodyEl.rows[j];
-			var thisMovie = tableRowToMovie(thisRow);
-			if(thisMovie["title"].toLowerCase().indexOf(term)!==-1 
-			|| thisMovie["director"].toLowerCase().indexOf(term)!==-1
-			|| thisMovie["year"].toString().toLowerCase().indexOf(term)!==-1){
+			var thisMovie = tableRowText(thisRow);
+			if(thisMovie.toLowerCase().indexOf(term)!==-1){
 				thisRow.style.display = "";
 			} else {
 				thisRow.style.display = "none";
@@ -233,6 +260,10 @@ function handleFilterTable(e){
 
 //Filters table
 filterEl.addEventListener("keyup", handleFilterTable);
+
+//Enumerate year column lazily
+tableBodyEl.addEventListener("focus", handleReplaceYearPicker, true);
+tableBodyEl.addEventListener("mouseover", handleReplaceYearPicker);
 
 //Handles changes to actual input elements
 tableBodyEl.addEventListener("change", handleInput);
