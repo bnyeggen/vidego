@@ -33,9 +33,9 @@ func HashFile(path string) string {
 		return ""
 	}
 	hasher := md5.New()
-	//Unlikely to be a collision over the first 16mb
+	//Unlikely to be a collision over the first N bytes
 	//This doesn't depend on files being < this threshold
-	io.CopyN(hasher, fd, 100000000)
+	io.CopyN(hasher, fd, 32000000)
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
