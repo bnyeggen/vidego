@@ -7,8 +7,8 @@ function rowIdToMovieId(s){
 	return parseInt(s.substring(6,s.length))
 }
 
-//Important to sync up this, movieToTableRow, and tableRowToMovie
-var fields = ["title", "director", "year", "watched", "added_date"]
+//Important to sync up this, movieToTableRow, and tableRowText
+var fields = ["title", "director", "year", "watched", "added_date", "path"]
 
 function makeDummyYearPicker(yearSelected){
 	var sel = document.createElement("select");
@@ -139,12 +139,14 @@ titleSorter = makeSorter("Title");
 watchedSorter = makeSorter("Watched");
 yearSorter = makeSorter("Year");
 addedSorter = makeSorter("Added_date");
+pathSorter = makeSorter("Path");
 
 document.getElementById("title_col").addEventListener("click",function(e){renderTable(titleSorter)});
 document.getElementById("director_col").addEventListener("click",function(e){renderTable(directorSorter)});
 document.getElementById("year_col").addEventListener("click",function(e){renderTable(yearSorter)});
 document.getElementById("watched_col").addEventListener("click",function(e){renderTable(watchedSorter)});
 document.getElementById("added_col").addEventListener("click",function(e){renderTable(addedSorter)});
+document.getElementById("path_col").addEventListener("click",function(e){renderTable(pathSorter)});
 
 function fireUpdateRequest(id, field, val){
 	var uri = "/update?id=" + id + "&field=" + field + "&val=" + encodeURIComponent(val);
