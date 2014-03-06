@@ -1,15 +1,87 @@
 //Effectively global
 var filterEl = document.getElementById("filter");
-var tableHeaderEl = document.getElementById("table_header");
 var tableBodyEl = document.getElementById("table_body");
 
-function rowIdToMovieId(s){
-	return parseInt(s.substring(6,s.length))
+//*****/
+//MODEL/
+//*****/
+
+/*This is actually the most straightforward part - we don't really have a lot
+  of "model" besides an array of POJOs.*/
+
+//Constructor.
+function MovieModel(){
+	if(false === (this instanceof MovieModel)) {
+        return new MovieModel();
+    }
+	this.fetchDataSync()
+}
+MovieModel.prototype.data = null
+//Synchronous; unclear if async logic is worthwhile to maintain when this is 
+//the core dependency of any other operatoin
+MovieModel.prototype.fetchDataSync = function(){
+	var that = this;
+	var req = new XMLHttpRequest();
+	req.overrideMimeType("application/json");
+	req.onload = function(){
+		that.data = JSON.parse(this.responseText);
+	}
+	req.open("GET", "/json", false);
+	req.send()
 }
 
-//Important to sync up this, movieToTableRow, and tableRowText
-var fields = ["title", "director", "year", "watched", "added_date", "path"]
+MovieModel.prototype.updateLocalData = function(id, field, val){
+	for(var i=0; i<this.data.length; i++){
+		var row = this.data[i]
+		if(row.Id == id){
+			row[field] = val;
+			return;
+		}
+	}
+}
 
+//For filtering, only looks at semantically meaningful entries
+//Ideally this would be a method of a Movie object, but then we have to use
+//Movie objects rather than passing the raw JSON-decoded objects
+function movieContainsTxt(movie, filterTxt){
+	if(filterTxt==="") {
+		return true;
+	}
+	var allTerms = filterTxt.split(" ");
+	for(var i=0; i<allTerms.length; i++){
+		var term = allTerms[i];
+		if(term===""){
+			continue;
+		}
+		if(movie.Title.toLowerCase().indexOf(filterTxt) === -1
+		&& movie.Director.toLowerCase().indexOf(filterTxt) === -1
+		&& movie.Year.toString().indexOf(filterTxt) === -1){
+			return false;
+		}
+	}
+	return true;
+}
+
+//****/
+//VIEW/
+//****/
+
+/*This gets a bit conceptually tricky.  Essentially this is the stuff that
+  generates the underlying DOM elements, and also symmetrically represents the
+  correspondence between rendered DOM elements and the backing data (eg, which
+  column corresponds to what field of the movie objects).  In that sense it's
+  more of a ViewModel, with the classical View being the DOM itself.
+
+  OTOH, it doesn't really declare the actual mechanisms for handling input /
+  view modifications and propogating them back to the model or server(and
+  thence to the view again) or modifying the view directly (eg, by sorting),
+  just the metadata necessary to do so through other means.  In that sense it
+  really is more of a view layer with a separate controller, just one that
+  actually needs to represent some state because of the crappiness of the DOM.
+*/
+
+//Helper function for creating row.  Only makes the initial selection and a
+//spacer element
 function makeDummyYearPicker(yearSelected){
 	var sel = document.createElement("select");
 	var option = document.createElement("option");
@@ -26,7 +98,7 @@ function makeDummyYearPicker(yearSelected){
 	return sel;
 }
 
-//This, or at least the loop, is the bottleneck.
+//Helper function - creates the fully enumerated year picker w/ all options
 function makeYearPicker(yearSelected){
 	var sel = document.createElement("select");
 	
@@ -49,6 +121,12 @@ function makeYearPicker(yearSelected){
 	return sel;
 }
 
+//Renders a movie as a single tr element - conceptually part of view object,
+//but doesn't depend on any state besides that of its argument.
+//If we were librarifying this, this would check the Model for column
+//definitions and render as appropriate, but each of these columns has pretty
+//special handling so we do it manually.  The order should correspond w/ the
+//column layout declared in the view protoype though.
 function movieToTableRow(movie){
 	var row = document.createElement("tr");
 	row.setAttribute("id", "movie_" + movie.Id);
@@ -56,10 +134,12 @@ function movieToTableRow(movie){
 	var titleCol = document.createElement("td");
 	titleCol.setAttribute("contentEditable", true);
 	titleCol.innerHTML = movie.Title;
+	//titleCol.classList.add("title_col");
 
 	var directorCol = document.createElement("td");
 	directorCol.setAttribute("contentEditable", true);
 	directorCol.innerHTML = movie.Director;
+	//directorCol.classList.add("director_col");
 	
 	var yearCol = document.createElement("td");
 	yearCol.appendChild(makeDummyYearPicker(movie.Year));
@@ -89,73 +169,177 @@ function movieToTableRow(movie){
 	return row
 }
 
-//Approximate mapping based on displayed/embedded info, for filtering
-function tableRowText(tr){
-	var yearIdx = tr.cells[2].children[0].selectedIndex;
-	return tr.cells[0].innerHTML + " " + tr.cells[1].innerHTML + " " + tr.cells[2].children[0].options[yearIdx].value
+//Extract numeric ID from text ID of row DOM element
+function rowIdToMovieId(s){
+	return parseInt(s.substring(6,s.length))
 }
 
-//Grabs initial data & renders
-function renderTable(sorter) {
-	var req = new XMLHttpRequest();
-	req.overrideMimeType("application/json");
-	req.onload = function() {
-		while (tableBodyEl.hasChildNodes()) {
-			tableBodyEl.removeChild(tableBodyEl.lastChild);
-		}
-		//Un-var this to make a global for debugging
-		var jsondata = JSON.parse(this.responseText);
-		if(sorter != null) {
-			sorter(jsondata);
-		}
-		for(var i=0; i<jsondata.length; i++){
-			var row = movieToTableRow(jsondata[i]);
-			tableBodyEl.appendChild(row)
-		}
-	};
-	req.open("GET","/json",true);
-	req.send();
+//Constructor
+function MovieView(model, parentElement){
+	if(false === (this instanceof MovieView)) {
+        return new MovieView(model, parentElement);
+    }
+	this.model = model;
+	this.parentElement = parentElement;
+	this.filteredRows = [];
+	for(var i=0; i<model.data.length; i++){
+		this.filteredRows.push(i);
+	}
+	this.sorterStates = {}
 }
-renderTable()
+//We check this in the controller when we're deciding what to send to the server, and when attaching sort handlers
+//In the future this could turn into enhanced metadata about the type & rendering of the column
+MovieView.prototype.fieldLayout = ["Title", "Director", "Year", "Watched", "Added_date", "Path"]
+//Source of backing data
+MovieView.prototype.model = null;
+//This element has its innerHTML replaced on render
+MovieView.prototype.parentElement = null;
+//Array of indexes in the model data that are actually valid according to the filter
+MovieView.prototype.filteredRows = null;
+//The prior filter to be applied
+MovieView.prototype.prevFilterTxt = "";
+//The count of rows that have presently been attached to the DOM, for managing lazy render
+MovieView.prototype.renderedRows = 0;
 
-//Returns a function that when called, sorts the array by the field, first in
-//one direction, then the other.
-var sorterStates = {}
-function makeSorter(col){
-	sorterStates[col] = true
-	return function(ar){
-		ar.sort(function(i1,i2){
-			return i1[col].toString().localeCompare(i2[col].toString());
+//Method to filter internal list of rows that pass filter
+MovieView.prototype.filter = function(filterTxt){
+	var filterTxtLC = filterTxt.toLowerCase();
+	var newFilteredRows = [];
+	//Avoids re-computing on arrows, etc.
+	if(filterTxtLC === this.prevFilterTxt){
+		return;
+	}
+	//Is filter purely additive?
+	if(filterTxtLC.indexOf(this.prevFilterTxt) !== -1){
+		//If so, filter in place
+		for(var i=0; i<this.filteredRows.length; i++){
+			var movieIdx = this.filteredRows[i];
+			var thisMovie = this.model.data[movieIdx];
+			if(movieContainsTxt(thisMovie,filterTxtLC)){
+				newFilteredRows.push(movieIdx);
+			}
+		}
+	} else {
+		//Otherwise, filter whole list
+		for(var i=0; i<this.model.data.length; i++){
+			var thisMovie = this.model.data[i]
+			if(movieContainsTxt(thisMovie,filterTxtLC)){
+				newFilteredRows.push(i);
+			}
+		}
+	}
+	//Update present filter
+	this.filteredRows = newFilteredRows;
+	//Record filter
+	this.prevFilterTxt = filterTxtLC;
+	//And re-render
+	this.renderFromScratch()
+}
+
+//Map from "column" name in the model data to a boolean indicating last sort order
+//This allows you to alternate between ascending and descending
+MovieView.prototype.sorterStates = null;
+MovieView.prototype.sortModelDataBy = function(sortCol){
+	if(sortCol != null){
+		if(!(sortCol in this.sorterStates)){
+			this.sorterStates[sortCol] = true;
+		}
+		var data = this.model.data;
+
+		//We only need to sort our local filtered index list, since that's what we actually render
+		this.filteredRows.sort(function(i1, i2){
+			var c1 = data[i1][sortCol];
+			var c2 = data[i2][sortCol];
+			return (c1<c2?-1:(c1>c2?1:0));
 		});
-		if (!sorterStates[col]){
-			ar.reverse();
+
+		//Reverse if we're inverse sorting
+		if(!this.sorterStates[sortCol]){
+			this.filteredRows.reverse();
 		}
-		sorterStates[col] = !sorterStates[col]
+
+		this.sorterStates[sortCol] = !this.sorterStates[sortCol];
 	}
 }
 
-directorSorter = makeSorter("Director");
-titleSorter = makeSorter("Title");
-watchedSorter = makeSorter("Watched");
-yearSorter = makeSorter("Year");
-addedSorter = makeSorter("Added_date");
-pathSorter = makeSorter("Path");
+//Blow away all previously rendered rows, and start from scratch
+MovieView.prototype.renderFromScratch = function(){	
+	var allRowHTML = "";
+	var i=0;
+	//Render until we have >= N rows and enough to fill the screen, or until we run out of rows
+	while( i<50 && i < this.filteredRows.length){
+		var rowData = this.model.data[this.filteredRows[i]];
+		allRowHTML += movieToTableRow(rowData).outerHTML;
+		i++;
+	}
+	this.renderedRows = i;
+	this.parentElement.innerHTML = allRowHTML;
+}
 
-document.getElementById("title_col").addEventListener("click",function(e){renderTable(titleSorter)});
-document.getElementById("director_col").addEventListener("click",function(e){renderTable(directorSorter)});
-document.getElementById("year_col").addEventListener("click",function(e){renderTable(yearSorter)});
-document.getElementById("watched_col").addEventListener("click",function(e){renderTable(watchedSorter)});
-document.getElementById("added_col").addEventListener("click",function(e){renderTable(addedSorter)});
-document.getElementById("path_col").addEventListener("click",function(e){renderTable(pathSorter)});
+//A to currently rendered rows.
+MovieView.prototype.renderMore = function(){
+	var allRowHTML = this.parentElement.innerHTML;
+	var i=0;
+	while(i<10 && this.renderedRows < this.filteredRows.length){
+		var rowData = this.model.data[this.filteredRows[this.renderedRows]];
+		allRowHTML += movieToTableRow(rowData).outerHTML;
+		this.renderedRows++;
+		i++;
+	}
+	this.parentElement.innerHTML = allRowHTML;
+}
 
+//*************/
+//INSTANTIATION
+//*************/
+
+/*Get whatever we actually need to attach controllers to*/
+
+var attachmentPoint = document.getElementById("table_body");
+//Also fetches initial data
+var mainModel       = new MovieModel();
+var mainView        = new MovieView(mainModel, attachmentPoint);
+var filterElement   = document.getElementById("filter");
+
+//**********/
+//CONTROLLER
+//**********/
+
+/*This is mostly event handling.  As mentioned above, we rely of the view to
+  maintain the correspondence between data layout & visual layout*/
+
+//Lazy rendering / infinite scrolling
+window.onscroll = function(ev) {
+    if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight) {
+        mainView.renderMore();
+    }
+};
+
+//To generate closure
+function makeSorter(col){
+	return function(e){
+		mainView.sortModelDataBy(col);
+		mainView.renderFromScratch();
+	}
+}
+
+//Columns sort on click
+for(var i=0; i<mainView.fieldLayout.length; i++){
+	var col = mainView.fieldLayout[i];
+	document.getElementById(col+"_header").addEventListener("click", makeSorter(col));
+}
+
+//Conform to backend API
 function fireUpdateRequest(id, field, val){
-	var uri = "/update?id=" + id + "&field=" + field + "&val=" + encodeURIComponent(val);
+	//Update backend	
+	var uri = "/update?id=" + id + "&field=" + field.toLowerCase() + "&val=" + encodeURIComponent(val);
 	var req = new XMLHttpRequest();
 	req.open("PUT", uri, true);
 	req.send()
 }
 
 //Map from id -> true, denoting whether that row has had its options fully rendered
+//This could be a property of a "controller" object if we were being fancy
 var fullyPopulatedSelectRows = {}
 function handleReplaceYearPicker(e){
 	var el = e.target;
@@ -178,12 +362,13 @@ function handleSelect(e){
 		return;
 	}
 	var colN = el.parentNode.cellIndex;
-	var field = fields[colN];
+	var field = mainView.fieldLayout[colN];
 	var val = el.options[el.selectedIndex].value;
 	var row = el.parentNode.parentNode
 	var id = rowIdToMovieId(row.id)
 	
 	fireUpdateRequest(id, field, val);
+	mainModel.updateLocalData(id, field, val);
 }
 
 function handleInput(e){
@@ -191,15 +376,14 @@ function handleInput(e){
 	if (el.nodeName !== "INPUT"){
 		return;
 	}
-
 	var colN = el.parentNode.cellIndex;
-	var field = fields[colN];
+	var field = mainView.fieldLayout[colN];
 	var val = (field==="watched") ? el.checked : el.value;
 	var row = el.parentNode.parentNode
 	var id = rowIdToMovieId(row.id)
 	
 	fireUpdateRequest(id, field, val);
-
+	mainModel.updateLocalData(id, field, val);
 }
 
 function nukeBreaks(s){
@@ -213,15 +397,15 @@ function handleContentEditable(e){
 	if (el.nodeName !== "TD"){
 		return;
 	}
-	
 	var colN = el.cellIndex
-	var field = fields[colN]
+	var field = mainView.fieldLayout[colN]
 	var row = el.parentNode
 	var id = rowIdToMovieId(row.id)
 	el.innerHTML = nukeBreaks(el.textContent)
 	var val = el.innerHTML
 	
 	fireUpdateRequest(id, field, val);
+	mainModel.updateLocalData(id, field, val);
 }
 
 function handleTableEnterKey(e){
@@ -234,46 +418,27 @@ function handleTableEnterKey(e){
 }
 
 function handleFilterTable(e){
-	var filter_txt = filterEl.value;
-	//Needed for when we delete the last filter
-	if(filter_txt===""){
-		for(var j=0; j<tableBodyEl.rows.length; j++){
-			tableBodyEl.rows[j].style.display = "";
-		}
-	}
-	//Consider each token as separate filter to be and-joined
-	splits = filter_txt.split(" ");
-	for(var i=0; i<splits.length; i++){
-		var term = splits[i].toLowerCase();
-		if(term==="") {
-			continue;
-		}
-		for(var j=0; j<tableBodyEl.rows.length; j++){
-			var thisRow = tableBodyEl.rows[j];
-			var thisMovie = tableRowText(thisRow);
-			if(thisMovie.toLowerCase().indexOf(term)!==-1){
-				thisRow.style.display = "";
-			} else {
-				thisRow.style.display = "none";
-			}
-		}
-	}
+	var filterTxt = filterEl.value;
+	mainView.filter(filterTxt);
 }
 
 //Filters table
 filterEl.addEventListener("keyup", handleFilterTable);
 
 //Enumerate year column lazily
-tableBodyEl.addEventListener("focus", handleReplaceYearPicker, true);
-tableBodyEl.addEventListener("mouseover", handleReplaceYearPicker);
+attachmentPoint.addEventListener("focus", handleReplaceYearPicker, true);
+attachmentPoint.addEventListener("mouseover", handleReplaceYearPicker);
 
 //Handles changes to actual input elements
-tableBodyEl.addEventListener("change", handleInput);
+attachmentPoint.addEventListener("change", handleInput);
 //And loss-of-focus for raw (presumably contenteditable) td elements
-tableBodyEl.addEventListener("blur", handleContentEditable, true);
+attachmentPoint.addEventListener("blur", handleContentEditable, true);
 //And selects
-tableBodyEl.addEventListener("change", handleSelect);
+attachmentPoint.addEventListener("change", handleSelect);
 
 //Prevent "enter" from embedding newlines
-tableBodyEl.addEventListener("keydown", handleTableEnterKey);
+attachmentPoint.addEventListener("keydown", handleTableEnterKey);
+
+//Do initial render
+mainView.renderFromScratch();
 
