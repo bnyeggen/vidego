@@ -18,7 +18,7 @@ function MovieModel(){
 }
 MovieModel.prototype.data = null
 //Synchronous; unclear if async logic is worthwhile to maintain when this is 
-//the core dependency of any other operatoin
+//the core dependency of any other operation
 MovieModel.prototype.fetchDataSync = function(){
 	var that = this;
 	var req = new XMLHttpRequest();
