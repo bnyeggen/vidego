@@ -147,7 +147,10 @@ function movieToTableRow(movie){
 	var watchedCol = document.createElement("td");
 	var watchedCheck = document.createElement("input");
 	watchedCheck.type="checkbox";
-	watchedCheck.checked = movie.Watched;
+	//If we just set checked = true, it doesn't affect the HTML
+	if(movie.Watched){
+		watchedCheck.setAttribute("checked","checked")
+	}
 	watchedCol.appendChild(watchedCheck);
 
 	var addedCol = document.createElement("td");
@@ -331,7 +334,7 @@ for(var i=0; i<mainView.fieldLayout.length; i++){
 
 //Conform to backend API
 function fireUpdateRequest(id, field, val){
-	//Update backend	
+	//Update backend
 	var uri = "/update?id=" + id + "&field=" + field.toLowerCase() + "&val=" + encodeURIComponent(val);
 	var req = new XMLHttpRequest();
 	req.open("PUT", uri, true);
@@ -378,10 +381,9 @@ function handleInput(e){
 	}
 	var colN = el.parentNode.cellIndex;
 	var field = mainView.fieldLayout[colN];
-	var val = (field==="watched") ? el.checked : el.value;
+	var val = (field==="Watched") ? el.checked : el.value;
 	var row = el.parentNode.parentNode
 	var id = rowIdToMovieId(row.id)
-	
 	fireUpdateRequest(id, field, val);
 	mainModel.updateLocalData(id, field, val);
 }
