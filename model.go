@@ -7,13 +7,13 @@ import (
 
 // Base Movie type, with associated metadata
 type Movie struct {
-	Id          int64
+	Id          uint64
 	Path        string
-	Byte_length int64
+	Byte_length int64 //file length returned as signed
 	Title       string
 	Director    string
-	Year        uint16
-	Added_date  time.Time //jsonizes as "0001-01-01T00:00:00Z"
+	Year        uint64
+	Added_date  string //Much easier for serialization, and we only display it
 	Watched     bool
 	Hash        string //Not calculated by default. Stored as base64
 }
@@ -22,13 +22,13 @@ type Movie struct {
 func NewMovie(path string) *Movie {
 	info, _ := os.Lstat(path)
 	return &Movie{
-		Id:          -1,
+		Id:          0,
 		Path:        path, //Assumes path is already absolute
 		Byte_length: info.Size(),
 		Title:       GetFilenameNoExt(path), //Treat filename excluding extension as title
 		Director:    "",
 		Year:        0,
-		Added_date:  time.Now(),
+		Added_date:  time.Now().Format("2006-01-02"),
 		Watched:     false,
 		Hash:        ""}
 }

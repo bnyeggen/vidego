@@ -23,9 +23,9 @@ func main() {
 	dbPath = os.Args[1]
 	scannerPaths = os.Args[2:]
 
-	//Migrate DB, close on shutdown
-	mainDB = migrate(dbPath)
-	defer mainDB.Close()
+	//Migrate DB, sync on shutdown
+	migrate(dbPath)
+	defer mainDB.Sync()
 
 	//Scan on startup
 	scanAllPaths()

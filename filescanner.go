@@ -144,11 +144,8 @@ func scanAllPaths() {
 	}
 
 	//Finally, remove any records of files that no longer exist
-	paths, _ := DumpAllPaths()
-	for _, path := range paths {
-		if !PathExists(path) {
-			Remove(path)
-		}
+	e := RemoveWithInvalidPaths()
+	if e != nil {
+		log.Println(e)
 	}
-	DeleteNullPaths()
 }

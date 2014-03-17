@@ -1,163 +1,186 @@
 package main
 
 import (
-	"database/sql"
+	"encoding/json"
 	"errors"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/fiatmoney/clownshoes"
+	"strconv"
+	"sync/atomic"
 )
 
-//Gloabl state holding the open DB
-var mainDB *sql.DB
+//Global state holding the open DB
+var mainDB *clownshoes.DocumentBundle
 
-// Initialize database if it hasn't been already, returning a pointer to it
-func migrate(loc string) *sql.DB {
-	myDB, err := sql.Open("sqlite3", loc)
-	if err != nil {
-		panic(err)
+//Atomically incremented for new insertions
+var maxID uint64
+
+// Initialize database if it hasn't been already.  Should only be called once.
+func migrate(loc string) {
+	mainDB = clownshoes.NewDB(loc)
+	if !mainDB.HasIndexNamed("hash") {
+		mainDB.AddIndex("hash", func(b []byte) string {
+			var m Movie
+			json.Unmarshal(b, &m)
+			return m.Hash
+		})
 	}
-	//Path is nullable so we can retain metadata by hash while we're handling moves
-	sql := `
-	create table if not exists
-	movies(id integer primary key,
-	       path text,
-	       byte_length integer not null,
-	       title text not null, 
-	       director text,
-	       year integer,
-	       added_date text not null,
-	       watched integer not null,
-	       hash text);
-	create index if not exists movies_hash on movies(hash);
-	create index if not exists movies_path on movies(path);
-	`
-	_, err = myDB.Exec(sql)
-	if err != nil {
-		panic(err)
+	if !mainDB.HasIndexNamed("id") {
+		mainDB.AddIndex("id", func(b []byte) string {
+			var m Movie
+			json.Unmarshal(b, &m)
+			return strconv.FormatUint(m.Id, 10)
+		})
 	}
-	return myDB
+	if !mainDB.HasIndexNamed("path") {
+		mainDB.AddIndex("path", func(b []byte) string {
+			var m Movie
+			json.Unmarshal(b, &m)
+			return m.Path
+		})
+	}
+
+	//Extract max ID
+	docs := mainDB.GetDocuments(func(b []byte) bool { return true })
+	maxID = 0
+	for _, doc := range docs {
+		var mv Movie
+		json.Unmarshal(doc.Payload, &mv)
+		if mv.Id > maxID {
+			maxID = mv.Id
+		}
+	}
 }
 
 //Store without check, auto-generating ID
 func StoreNew(m *Movie) error {
-	dateAsTxt, _ := m.Added_date.MarshalText()
-	res, err := mainDB.Exec("insert into movies(path, byte_length, title, director, year, added_date, watched, hash) values(?,?,?,?,?,?,?,?)", m.Path, m.Byte_length, m.Title, m.Director, m.Year, dateAsTxt, m.Watched, m.Hash)
-	if err != nil {
-		return err
-	}
-	m.Id, err = res.LastInsertId()
-	return err
+	id := atomic.AddUint64(&maxID, 1)
+	m.Id = id
+	asBytes, _ := json.Marshal(m)
+	asDoc := clownshoes.NewDocument(asBytes)
+	mainDB.PutDocument(asDoc)
+	return nil
 }
 
 //Stores as a "new" movie in the given location, with existing metadata and a new ID
 func StoreCopy(m *Movie, newPath string) error {
-	m.Id = 0
 	m.Path = newPath
 	return StoreNew(m)
 }
 
-//Constrained to be only Id and one value
-func ModifyWithMap(m map[string]interface{}) error {
-	id, ok := m["id"]
-	if !ok {
-		return errors.New("No ID in ModifyWithMap")
-	}
-	if newTitle, ok := m["title"]; ok {
-		_, err := mainDB.Exec("update movies set title=? where id=?", newTitle, id)
-		return err
-	} else if newDirector, ok := m["director"]; ok {
-		_, err := mainDB.Exec("update movies set director=? where id=?", newDirector, id)
-		return err
-	} else if watched, ok := m["watched"]; ok {
-		_, err := mainDB.Exec("update movies set watched=? where id=?", watched, id)
-		return err
-	} else if year, ok := m["year"]; ok {
-		_, err := mainDB.Exec("update movies set year=? where id=?", year, id)
-		return err
+func Modify(id uint64, field string, val string) error {
+	switch field {
+	case "title":
+		mainDB.ReplaceDocumentsWhere("id", strconv.FormatUint(id, 10), func(b []byte) ([]byte, bool) {
+			var mv Movie
+			json.Unmarshal(b, &mv)
+			mv.Title = val
+			out, _ := json.Marshal(mv)
+			return out, true
+		})
+		return nil
+	case "watched":
+		watched, _ := strconv.ParseBool(val)
+		mainDB.ReplaceDocumentsWhere("id", strconv.FormatUint(id, 10), func(b []byte) ([]byte, bool) {
+			var mv Movie
+			json.Unmarshal(b, &mv)
+			mv.Watched = watched
+			out, _ := json.Marshal(mv)
+			return out, true
+		})
+		return nil
+	case "director":
+		mainDB.ReplaceDocumentsWhere("id", strconv.FormatUint(id, 10), func(b []byte) ([]byte, bool) {
+			var mv Movie
+			json.Unmarshal(b, &mv)
+			mv.Director = val
+			out, _ := json.Marshal(mv)
+			return out, true
+		})
+		return nil
+	case "year":
+		year, _ := strconv.ParseUint(val, 10, 64)
+		mainDB.ReplaceDocumentsWhere("id", strconv.FormatUint(id, 10), func(b []byte) ([]byte, bool) {
+			var mv Movie
+			json.Unmarshal(b, &mv)
+			mv.Year = year
+			out, _ := json.Marshal(mv)
+			return out, true
+		})
+		return nil
 	}
 	return errors.New("No valid update to map")
 }
 
-// Remove the movie record with the given path.
+// Remove all movie records with the given path.
 func Remove(path string) error {
-	_, err := mainDB.Exec("delete from movies where path = ?", path)
-	return err
+	mainDB.RemoveDocumentsWhere("path", path, func(b []byte) bool { return true })
+	return nil
 }
 
-func DumpDB() ([]Movie, error) {
-	//TODO: Reuse the getMovieByWhereClause machinery as much as possible
-	out := make([]Movie, 0)
-	r, e := mainDB.Query("select id, path, byte_length, title, director, year, added_date, watched, hash from movies")
-	if e != nil {
-		return out, e
+func DumpDB() []Movie {
+	docs := mainDB.GetDocuments(func(b []byte) bool {
+		return true
+	})
+	mvs := make([]Movie, 0, len(docs))
+	for _, doc := range docs {
+		var mv Movie
+		json.Unmarshal(doc.Payload, &mv)
+		mvs = append(mvs, mv)
 	}
-	for r.Next() {
-		var m Movie
-		var added_date_txt string
-		e = r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &m.Year, &added_date_txt, &m.Watched, &m.Hash)
-		m.Added_date.UnmarshalText([]byte(added_date_txt))
-		if e != nil {
-			return out, e
-		}
-		out = append(out, m)
-	}
-	return out, nil
+	return mvs
 }
 
-func DumpAllPaths() ([]string, error) {
-	out := make([]string, 0)
-	r, e := mainDB.Query("select path from movies where path != null")
-	if e != nil {
-		return out, e
-	}
-	for r.Next() {
-		var s string
-		e = r.Scan(&s)
-		if e != nil {
-			return out, e
-		}
-		out = append(out, s)
-	}
-	return out, nil
-}
-
-func DeleteNullPaths() error {
-	_, e := mainDB.Exec("delete from movies where path = null")
-	return e
-}
-
-//This just ensures we have the same fields & order when we query
-//Obviously, don't SQL inject yourself in the clause w/ user input
-func getMovieByWhereClause(clause string, args ...interface{}) *Movie {
-	var m Movie
-	q := "select id, path, byte_length, title, director, year, added_date, watched, hash from movies " + clause
-	r := mainDB.QueryRow(q, args...)
-	var added_date_txt string
-	e := r.Scan(&m.Id, &m.Path, &m.Byte_length, &m.Title, &m.Director, &m.Year, &added_date_txt, &m.Watched, &m.Hash)
-	m.Added_date.UnmarshalText([]byte(added_date_txt))
-	if e == sql.ErrNoRows {
-		return nil
-	}
-	return &m
+//Remove any movie with a missing path
+func RemoveWithInvalidPaths() error {
+	mainDB.RemoveDocumentsWhere("path", "", func([]byte) bool { return true })
+	mainDB.RemoveDocuments(func(b []byte) bool {
+		var mv Movie
+		json.Unmarshal(b, &mv)
+		return !PathExists(mv.Path)
+	})
+	return nil
 }
 
 func GetMovieByPath(path string) *Movie {
-	return getMovieByWhereClause("where path=?", path)
+	docs := mainDB.GetDocumentsWhere("path", path)
+	if len(docs) > 0 {
+		var m Movie
+		json.Unmarshal(docs[0].Payload, &m)
+		return &m
+	}
+	return nil
 }
 
 func GetMovieByHashAndSize(hash string, byte_length int64) *Movie {
-	return getMovieByWhereClause("where hash=? and byte_length=?", hash, byte_length)
+	docs := mainDB.GetDocumentsWhere("hash", hash)
+	for _, doc := range docs {
+		var mv Movie
+		json.Unmarshal(doc.Payload, &mv)
+		if mv.Byte_length == byte_length {
+			return &mv
+		}
+	}
+	return nil
 }
 
-func GetMovieByID(id int64) *Movie {
-	return getMovieByWhereClause("where id=?", id)
+func GetMovieByID(id uint64) *Movie {
+	docs := mainDB.GetDocumentsWhere("id", strconv.FormatUint(id, 10))
+	if len(docs) > 0 {
+		var mv Movie
+		json.Unmarshal(docs[0].Payload, &mv)
+		return &mv
+	}
+	return nil
 }
 
-func UpdatePath(oldPath string, newPath string) error {
-	_, err := mainDB.Exec("update movies set path=? where path=?", newPath, oldPath)
-	return err
-}
-
-func ClearPathByID(id int64) error {
-	_, err := mainDB.Exec(`update movies set path="" where id=?`, id)
-	return err
+//Set the given item's path to ""
+func ClearPathByID(id uint64) error {
+	mainDB.ReplaceDocumentsWhere("id", strconv.FormatUint(id, 10), func(b []byte) ([]byte, bool) {
+		var mv Movie
+		json.Unmarshal(b, &mv)
+		mv.Path = ""
+		out, _ := json.Marshal(mv)
+		return out, true
+	})
+	return nil
 }

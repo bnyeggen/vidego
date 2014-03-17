@@ -18,10 +18,7 @@ import (
 // Dumps present DB to JSON
 func jsonDumpHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	mvs, e := DumpDB()
-	if e != nil {
-		log.Println(e)
-	}
+	mvs := DumpDB()
 	movies, _ := json.Marshal(mvs)
 	w.Write(movies)
 }
@@ -30,22 +27,20 @@ func jsonDumpHandler(w http.ResponseWriter, r *http.Request) {
 func movieUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	id := r.Form.Get("id")
-
+	idAsInt, e := strconv.ParseUint(id, 10, 64)
+	if e != nil {
+		log.Println(e)
+	}
 	switch r.Method {
 	case "PUT":
 		field := strings.ToLower(r.Form.Get("field"))
 		val := r.Form.Get("val")
-		update := map[string]interface{}{
-			"id":  id,
-			field: val,
-		}
-		e := ModifyWithMap(update)
+		e := Modify(idAsInt, field, val)
 		if e != nil {
 			log.Println(e)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	case "GET":
-		idAsInt, e := strconv.ParseInt(id, 10, 64)
 		if e != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -65,9 +60,6 @@ func movieUpdateHandler(w http.ResponseWriter, r *http.Request) {
 func displayAllHandler(w http.ResponseWriter, r *http.Request) {
 	//Currently this doesn't actually require any templating
 	t, _ := template.ParseFiles("resources/index.html")
-	mvs, e := DumpDB()
-	if e != nil {
-		log.Println(e)
-	}
+	mvs := DumpDB()
 	t.Execute(w, mvs)
 }
