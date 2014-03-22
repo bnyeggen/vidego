@@ -2,6 +2,15 @@
 var filterEl = document.getElementById("filter");
 var tableBodyEl = document.getElementById("table_body");
 
+function escapeHtml(unsafe) {
+	return unsafe
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#039;");
+ }
+
 //*****/
 //MODEL/
 //*****/
@@ -80,47 +89,6 @@ function movieContainsTxt(movie, filterTxt){
   actually needs to represent some state because of the crappiness of the DOM.
 */
 
-//Helper function for creating row.  Only makes the initial selection and a
-//spacer element
-function makeDummyYearPicker(yearSelected){
-	var sel = document.createElement("select");
-	var option = document.createElement("option");
-	option.value = yearSelected.toString();
-	option.innerHTML = (option.value != 0) ? yearSelected.toString() : "";
-	option.selected = true;
-	sel.add(option);
-	//Never gets seen; anything that can open the menu causes the year picker to be replaced.
-	//Purely to ensure homogenous lengths
-	var dummyoption = document.createElement("option");
-	dummyoption.innerHTML = "1988";
-	sel.add(dummyoption);
-	
-	return sel;
-}
-
-//Helper function - creates the fully enumerated year picker w/ all options
-function makeYearPicker(yearSelected){
-	var sel = document.createElement("select");
-	
-	var option = document.createElement("option");
-	option.value="0";
-	if(yearSelected==0){
-		option.selected = true;
-	}
-	sel.add(option);
-	
-	for(var i=1920; i<=new Date().getFullYear(); i++){
-		var option = document.createElement("option");
-		option.value = i.toString();
-		option.innerHTML = i.toString();
-		if(yearSelected == i){
-			option.selected = true;
-		}
-		sel.add(option);
-	}
-	return sel;
-}
-
 //Renders a movie as a single tr element - conceptually part of view object,
 //but doesn't depend on any state besides that of its argument.
 //If we were librarifying this, this would check the Model for column
@@ -141,15 +109,25 @@ function movieToTableRow(movie){
 	directorCol.innerHTML = movie.Director;
 	//directorCol.classList.add("director_col");
 	
+	//Right now FF 28 is the only modern browser that has issues w/ this, and
+	//the fix is coming in FF 29.
 	var yearCol = document.createElement("td");
-	yearCol.appendChild(makeDummyYearPicker(movie.Year));
-	
+	var yearInp = document.createElement("input");
+	yearInp.type = "number";
+	yearInp.min = "1920";
+	yearInp.max = "2014";
+	if (movie.Year != 0) {
+		yearInp.defaultValue = movie.Year.toString();
+	}
+	//yearInp.value = movie.Year;
+	yearCol.appendChild(yearInp);
+
 	var watchedCol = document.createElement("td");
 	var watchedCheck = document.createElement("input");
 	watchedCheck.type="checkbox";
 	//If we just set checked = true, it doesn't affect the HTML
 	if(movie.Watched){
-		watchedCheck.setAttribute("checked","checked")
+		watchedCheck.setAttribute("checked","checked");
 	}
 	watchedCol.appendChild(watchedCheck);
 
@@ -158,9 +136,9 @@ function movieToTableRow(movie){
 	
 	var pathCol = document.createElement("td");
 	var asLink = document.createElement("a");
-	asLink.href = "/movies" + movie.Path
-	asLink.text = movie.Path
-	pathCol.appendChild(asLink)
+	asLink.href = "/movies" + movie.Path;
+	asLink.innerHTML = escapeHtml(movie.Path);
+	pathCol.appendChild(asLink);
 	
 	row.appendChild(titleCol);
 	row.appendChild(directorCol);
@@ -270,25 +248,12 @@ MovieView.prototype.renderFromScratch = function(){
 	var allRowHTML = "";
 	var i=0;
 	//Render until we have >= N rows and enough to fill the screen, or until we run out of rows
-	while( i<50 && i < this.filteredRows.length){
+	while(i < this.filteredRows.length){
 		var rowData = this.model.data[this.filteredRows[i]];
 		allRowHTML += movieToTableRow(rowData).outerHTML;
 		i++;
 	}
 	this.renderedRows = i;
-	this.parentElement.innerHTML = allRowHTML;
-}
-
-//A to currently rendered rows.
-MovieView.prototype.renderMore = function(){
-	var allRowHTML = this.parentElement.innerHTML;
-	var i=0;
-	while(i<10 && this.renderedRows < this.filteredRows.length){
-		var rowData = this.model.data[this.filteredRows[this.renderedRows]];
-		allRowHTML += movieToTableRow(rowData).outerHTML;
-		this.renderedRows++;
-		i++;
-	}
 	this.parentElement.innerHTML = allRowHTML;
 }
 
@@ -311,13 +276,6 @@ var filterElement   = document.getElementById("filter");
 /*This is mostly event handling.  As mentioned above, we rely of the view to
   maintain the correspondence between data layout & visual layout*/
 
-//Lazy rendering / infinite scrolling
-window.onscroll = function(ev) {
-    if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight) {
-        mainView.renderMore();
-    }
-};
-
 //To generate closure
 function makeSorter(col){
 	return function(e){
@@ -339,39 +297,6 @@ function fireUpdateRequest(id, field, val){
 	var req = new XMLHttpRequest();
 	req.open("PUT", uri, true);
 	req.send()
-}
-
-//Map from id -> true, denoting whether that row has had its options fully rendered
-//This could be a property of a "controller" object if we were being fancy
-var fullyPopulatedSelectRows = {}
-function handleReplaceYearPicker(e){
-	var el = e.target;
-	if (el.nodeName !== "SELECT"){
-		return;
-	}
-	var row = el.parentNode.parentNode;
-	var id = rowIdToMovieId(row.id)
-	if (fullyPopulatedSelectRows[id]){
-		return;
-	}
-	fullyPopulatedSelectRows[id] = true;
-	var val = el.options[el.selectedIndex].value;
-	el.parentNode.replaceChild(makeYearPicker(val), el);
-}
-
-function handleSelect(e){
-	var el = e.target;
-	if (el.nodeName !== "SELECT"){
-		return;
-	}
-	var colN = el.parentNode.cellIndex;
-	var field = mainView.fieldLayout[colN];
-	var val = el.options[el.selectedIndex].value;
-	var row = el.parentNode.parentNode
-	var id = rowIdToMovieId(row.id)
-	
-	fireUpdateRequest(id, field, val);
-	mainModel.updateLocalData(id, field, val);
 }
 
 function handleInput(e){
@@ -427,16 +352,10 @@ function handleFilterTable(e){
 //Filters table
 filterEl.addEventListener("keyup", handleFilterTable);
 
-//Enumerate year column lazily
-attachmentPoint.addEventListener("focus", handleReplaceYearPicker, true);
-attachmentPoint.addEventListener("mouseover", handleReplaceYearPicker);
-
 //Handles changes to actual input elements
 attachmentPoint.addEventListener("change", handleInput);
 //And loss-of-focus for raw (presumably contenteditable) td elements
 attachmentPoint.addEventListener("blur", handleContentEditable, true);
-//And selects
-attachmentPoint.addEventListener("change", handleSelect);
 
 //Prevent "enter" from embedding newlines
 attachmentPoint.addEventListener("keydown", handleTableEnterKey);
