@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"time"
 )
 
 // Base Movie type, with associated metadata
@@ -28,7 +27,7 @@ func NewMovie(path string) *Movie {
 		Title:       GetFilenameNoExt(path), //Treat filename excluding extension as title
 		Director:    "",
 		Year:        0,
-		Added_date:  time.Now().Format("2006-01-02"),
+		Added_date:  info.ModTime().Format("2006-01-02"),
 		Watched:     false,
 		Hash:        ""}
 }
