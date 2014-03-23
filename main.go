@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 )
 
 //Location of sqlite DB
@@ -31,13 +32,20 @@ func main() {
 	scanAllPaths()
 	log.Println("Ready")
 
-	http.HandleFunc("/", displayAllHandler)
 	http.HandleFunc("/json", jsonDumpHandler)
 	http.HandleFunc("/update", movieUpdateHandler)
 	http.Handle("/resources/", http.StripPrefix("/resources/", http.FileServer(http.Dir("resources"))))
 	//This surfaces at, eg, http://localhost:8080/movies/vol1/crapvid/Bernie.m4v
+	//But this only works if the path has a trailing /
 	for _, path := range scannerPaths {
-		http.Handle("/movies"+path, http.StripPrefix("/movies"+path, http.FileServer(http.Dir(path))))
+		var nPath string
+		if strings.HasSuffix(path, "/") {
+			nPath = path
+		} else {
+			nPath = path + "/"
+		}
+		http.Handle("/movies"+nPath, http.StripPrefix("/movies"+nPath, http.FileServer(http.Dir(nPath))))
 	}
+	http.HandleFunc("/", displayAllHandler)
 	http.ListenAndServe(":8080", nil)
 }
