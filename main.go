@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
 )
 
@@ -26,7 +27,16 @@ func main() {
 
 	//Migrate DB, sync on shutdown
 	migrate(dbPath)
-	defer mainDB.Sync()
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		for _ = range c {
+			log.Println("Shutting down...")
+			mainDB.Sync()
+			log.Println("Goodbye")
+			os.Exit(0)
+		}
+	}()
 
 	//Scan on startup
 	scanAllPaths()
