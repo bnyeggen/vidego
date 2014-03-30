@@ -58,13 +58,13 @@ function movieContainsTxt(movie, filterTxt){
 	}
 	var allTerms = filterTxt.split(" ");
 	for(var i=0; i<allTerms.length; i++){
-		var term = allTerms[i];
+		var term = allTerms[i].trim();
 		if(term===""){
 			continue;
 		}
-		if(movie.Title.toLowerCase().indexOf(filterTxt) === -1
-		&& movie.Director.toLowerCase().indexOf(filterTxt) === -1
-		&& movie.Year.toString().indexOf(filterTxt) === -1){
+		if(movie.Title.toLowerCase().indexOf(term) === -1
+		&& movie.Director.toLowerCase().indexOf(term) === -1
+		&& movie.Year.toString().indexOf(term) === -1){
 			return false;
 		}
 	}
