@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-//Location of sqlite DB
+//Location of DB
 var dbPath string
 
 //All paths to be scanned
@@ -32,6 +32,7 @@ func main() {
 	go func() {
 		for _ = range c {
 			log.Println("Shutting down...")
+			mainDB.Compact()
 			mainDB.Sync()
 			log.Println("Goodbye")
 			os.Exit(0)
