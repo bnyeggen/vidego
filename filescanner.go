@@ -100,7 +100,6 @@ func scanAllPaths() {
 			mByPath := GetMovieByPath(m.Path)
 			if mByPath != nil && m.Byte_length == mByPath.Byte_length {
 				//Existing name & same size - match
-				log.Println("Skipping: " + m.Path)
 				continue
 			} else {
 				//With a "real" db, this could be all goroutines w/ a waitgroup
