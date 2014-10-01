@@ -361,5 +361,7 @@ attachmentPoint.addEventListener("blur", handleContentEditable, true);
 attachmentPoint.addEventListener("keydown", handleTableEnterKey);
 
 //Do initial render
+mainView.sortModelDataBy("Added_date");
+mainView.sortModelDataBy("Added_date");
 mainView.renderFromScratch();
 
