@@ -263,6 +263,15 @@ MovieView.prototype.renderFromScratch = function(){
 
 /*Get whatever we actually need to attach controllers to*/
 
+
+function scan(){
+	var req = new XMLHttpRequest();
+	req.open("GET", "/scan", false);
+	req.send()
+}
+
+scan();
+
 var attachmentPoint = document.getElementById("table_body");
 //Also fetches initial data
 var mainModel       = new MovieModel();
@@ -366,8 +375,6 @@ mainModel.data.sort(function(i1, i2){
 			var c2 = i2["Added_date"];
 			return (c1<c2?-1:(c1>c2?1:0));
 		});
+
 mainModel.data.reverse();
-
-//Do initial render
 mainView.renderFromScratch();
-

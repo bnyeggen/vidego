@@ -23,6 +23,10 @@ func jsonDumpHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(movies)
 }
 
+func scanHandler(w http.ResponseWriter, r *http.Request) {
+	scanAllPaths()
+}
+
 // Receives updates to movies via PUT
 func movieUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()

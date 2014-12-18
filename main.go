@@ -43,6 +43,8 @@ func main() {
 	scanAllPaths()
 	log.Println("Ready")
 
+	http.HandleFunc("/scan", scanHandler)
+
 	http.HandleFunc("/json", jsonDumpHandler)
 	http.HandleFunc("/update", movieUpdateHandler)
 	http.Handle("/resources/", http.StripPrefix("/resources/", http.FileServer(http.Dir("resources"))))
