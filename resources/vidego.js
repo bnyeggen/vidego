@@ -360,8 +360,14 @@ attachmentPoint.addEventListener("blur", handleContentEditable, true);
 //Prevent "enter" from embedding newlines
 attachmentPoint.addEventListener("keydown", handleTableEnterKey);
 
+//Sort by Added_date descending
+mainModel.data.sort(function(i1, i2){
+			var c1 = i1["Added_date"];
+			var c2 = i2["Added_date"];
+			return (c1<c2?-1:(c1>c2?1:0));
+		});
+mainModel.data.reverse();
+
 //Do initial render
-mainView.sortModelDataBy("Added_date");
-mainView.sortModelDataBy("Added_date");
 mainView.renderFromScratch();
 
